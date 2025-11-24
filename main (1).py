@@ -1,7 +1,7 @@
-import pygame, sys
+import pygame
 from button import Button
-import sys 
-import random 
+import sys
+import random
 
 pygame.init()
 
@@ -10,90 +10,131 @@ pygame.display.set_caption("Mäng")
 
 BG = pygame.image.load("Jõuluprojekt/assets/taust1.jpg")
 
-def get_font(size): # Returns Press-Start-2P in the desired size
+def get_font(size):  # Returns Press-Start-2P in the desired size
     return pygame.font.Font("Jõuluprojekt/assets/font.ttf", size)
 
 def play():
     clock = pygame.time.Clock()
     font = get_font(35)
 
-    snake_pos = [100, 50]
-    snake_body = [[100, 50], [90, 50], [80, 50]]
-    direction = 'RIGHT'
-    change_to = direction
-    speed = 15
+    # --- Taustapilt ---
+    try:
+        teepilt = pygame.image.load("Jõuluprojekt/assets/teepilt.png")
+        teepilt = pygame.transform.scale(teepilt, (SCREEN.get_width(), SCREEN.get_height()))
+    except Exception:
+        teepilt = None
 
-    food_pos = [random.randrange(1, 128)*10, random.randrange(1, 72)*10]
-    food_spawn = True
+    # --- Autode pildid ---
+    mangijaauto = pygame.image.load("Jõuluprojekt/assets/mangijaauto.png")
+    mangijaauto = pygame.transform.scale(mangijaauto, (80, 120))
+
+    takistusauto = pygame.image.load("Jõuluprojekt/assets/takistusauto.png")
+    takistusauto = pygame.transform.scale(takistusauto, (80, 120))
+
+    car_width, car_height = 80, 120
+    car_lane = 1
+    car_y = 550
+    lane_width = SCREEN.get_width() // 3
+
+    def lane_center(lane_index):
+        return lane_width * lane_index + lane_width // 2
+
+    car_rect = pygame.Rect(lane_center(car_lane) - car_width // 2,
+                           car_y, car_width, car_height)
+
+    obstacles = []
+    obstacle_timer = 0
+    obstacle_interval = 1500
     score = 0
+    start_ticks = pygame.time.get_ticks()
+    game_over_flag = False
+
+    # --- Algne kiirus ---
+    obstacle_speed = 8
 
     def game_over():
+        nonlocal game_over_flag, score
+        game_over_flag = True
         go_font = get_font(60)
+        score_font = get_font(40)
+
         go_surf = go_font.render("Game Over!", True, "red")
-        go_rect = go_surf.get_rect(center=(640, 360))
+        go_rect = go_surf.get_rect(center=(640, 300))
         SCREEN.blit(go_surf, go_rect)
+
+        score_surf = score_font.render(f"Sinu skoor: {score}", True, "white")
+        score_rect = score_surf.get_rect(center=(640, 380))
+        SCREEN.blit(score_surf, score_rect)
+
         pygame.display.flip()
-        pygame.time.wait(2000)
+        pygame.time.wait(3000)
         main_menu()
 
     while True:
+        dt = clock.tick(60)
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 pygame.quit()
                 sys.exit()
-            elif event.type == pygame.KEYDOWN:
-                if event.key == pygame.K_UP and direction != 'DOWN':
-                    change_to = 'UP'
-                elif event.key == pygame.K_DOWN and direction != 'UP':
-                    change_to = 'DOWN'
-                elif event.key == pygame.K_LEFT and direction != 'RIGHT':
-                    change_to = 'LEFT'
-                elif event.key == pygame.K_RIGHT and direction != 'LEFT':
-                    change_to = 'RIGHT'
+            elif event.type == pygame.KEYDOWN and not game_over_flag:
+                if event.key == pygame.K_LEFT and car_lane > 0:
+                    car_lane -= 1
+                elif event.key == pygame.K_RIGHT and car_lane < 2:
+                    car_lane += 1
 
-        direction = change_to
+        if not game_over_flag:
+            car_rect.x = lane_center(car_lane) - car_width // 2
 
-        if direction == 'UP':
-            snake_pos[1] -= 10
-        elif direction == 'DOWN':
-            snake_pos[1] += 10
-        elif direction == 'LEFT':
-            snake_pos[0] -= 10
-        elif direction == 'RIGHT':
-            snake_pos[0] += 10
+            obstacle_timer += dt
+            if obstacle_timer >= obstacle_interval:
+                obstacle_timer = 0
+                lane = random.randint(0, 2)
+                obs_rect = pygame.Rect(lane_center(lane) - car_width // 2,
+                                       -120, car_width, car_height)
+                obstacles.append(obs_rect)
 
-        snake_body.insert(0, list(snake_pos))
-        if snake_pos == food_pos:
-            score += 1
-            food_spawn = False
+            # --- Kiiruse dünaamika: iga 10 punkti järel kiireneb ---
+            obstacle_speed = 8 + (score // 10) * 2
+
+            for obs in obstacles:
+                obs.y += obstacle_speed
+            obstacles = [o for o in obstacles if o.y < 800]
+
+            for obs in obstacles:
+                if car_rect.colliderect(obs):
+                    game_over()
+
+            score = (pygame.time.get_ticks() - start_ticks) // 1000
+
+        # --- Joonistamine ---
+        if teepilt:
+            SCREEN.blit(teepilt, (0, 0))
         else:
-            snake_body.pop()
+            SCREEN.fill((50, 50, 50))
 
-        if not food_spawn:
-            food_pos = [random.randrange(1, 128)*10, random.randrange(1, 72)*10]
-        food_spawn = True
+        # Tume kollased katkestatud liikuvad teejooned
+        dash_length = 80
+        dash_gap = 20
+        line_width = 8
+        line_offset = (pygame.time.get_ticks() // 10) % (dash_length + dash_gap)
 
-        SCREEN.fill("black")
+        for i in range(1, 3):  # kahe vahejoone jaoks
+            x = lane_width * i
+            for y in range(-dash_length, SCREEN.get_height(), dash_length + dash_gap):
+                pygame.draw.line(SCREEN, (200, 200, 0), (x, y + line_offset), (x, y + dash_length + line_offset), line_width)
 
-        for block in snake_body:
-            pygame.draw.rect(SCREEN, "green", pygame.Rect(block[0], block[1], 10, 10))
+        # Mängija auto
+        SCREEN.blit(mangijaauto, car_rect)
 
-        pygame.draw.rect(SCREEN, "red", pygame.Rect(food_pos[0], food_pos[1], 10, 10))
-
-        if (snake_pos[0] < 0 or snake_pos[0] > 1270 or
-            snake_pos[1] < 0 or snake_pos[1] > 710):
-            game_over()
-
-        for block in snake_body[1:]:
-            if snake_pos == block:
-                game_over()
+        # Takistusautod
+        for obs in obstacles:
+            SCREEN.blit(takistusauto, obs)
 
         score_text = font.render(f"Skoor: {score}", True, "white")
         SCREEN.blit(score_text, (10, 10))
 
         pygame.display.update()
-        clock.tick(speed)
-    
+
 def options():
     while True:
         OPTIONS_MOUSE_POS = pygame.mouse.get_pos()
@@ -104,8 +145,8 @@ def options():
         OPTIONS_RECT = OPTIONS_TEXT.get_rect(center=(640, 260))
         SCREEN.blit(OPTIONS_TEXT, OPTIONS_RECT)
 
-        OPTIONS_BACK = Button(image=None, pos=(640, 460), 
-                            text_input="BACK", font=get_font(75), base_color="Black", hovering_color="Green")
+        OPTIONS_BACK = Button(image=None, pos=(640, 460),
+                              text_input="BACK", font=get_font(75), base_color="Black", hovering_color="Green")
 
         OPTIONS_BACK.changeColor(OPTIONS_MOUSE_POS)
         OPTIONS_BACK.update(SCREEN)
@@ -129,19 +170,19 @@ def main_menu():
         MENU_TEXT = get_font(100).render("Menüü", True, "#b68f40")
         MENU_RECT = MENU_TEXT.get_rect(center=(640, 100))
 
-        PLAY_BUTTON = Button(image=pygame.image.load("Jõuluprojekt/assets/Play Rect.png"), pos=(640, 250), 
-                            text_input="PLAY", font=get_font(75), base_color="#d7fcd4", hovering_color="White")
-        OPTIONS_BUTTON = Button(image=pygame.image.load("Jõuluprojekt/assets/Options Rect.png"), pos=(640, 400), 
-                            text_input="OPTIONS", font=get_font(75), base_color="#d7fcd4", hovering_color="White")
-        QUIT_BUTTON = Button(image=pygame.image.load("Jõuluprojekt/assets/Quit Rect.png"), pos=(640, 550), 
-                            text_input="QUIT", font=get_font(75), base_color="#d7fcd4", hovering_color="Red")
+        PLAY_BUTTON = Button(image=pygame.image.load("Jõuluprojekt/assets/Play Rect.png"), pos=(640, 250),
+                             text_input="PLAY", font=get_font(75), base_color="#d7fcd4", hovering_color="White")
+        OPTIONS_BUTTON = Button(image=pygame.image.load("Jõuluprojekt/assets/Options Rect.png"), pos=(640, 400),
+                                text_input="OPTIONS", font=get_font(75), base_color="#d7fcd4", hovering_color="White")
+        QUIT_BUTTON = Button(image=pygame.image.load("Jõuluprojekt/assets/Quit Rect.png"), pos=(640, 550),
+                             text_input="QUIT", font=get_font(75), base_color="#d7fcd4", hovering_color="Red")
 
         SCREEN.blit(MENU_TEXT, MENU_RECT)
 
         for button in [PLAY_BUTTON, OPTIONS_BUTTON, QUIT_BUTTON]:
             button.changeColor(MENU_MOUSE_POS)
             button.update(SCREEN)
-        
+
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 pygame.quit()
